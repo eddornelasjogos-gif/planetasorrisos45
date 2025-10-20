@@ -122,14 +122,14 @@ export class Cell {
     ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
     ctx.fillStyle = this.color;
     ctx.fill();
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = Math.max(1, this.radius * 0.05);
+    ctx.strokeStyle = '#00000066';
+    ctx.lineWidth = Math.max(1, this.radius * 0.04);
     ctx.stroke();
     ctx.closePath();
     
     if (this.radius > 15) {
-        ctx.fillStyle = isPlayer ? '#fff' : '#333';
-        ctx.font = `${Math.max(12, this.radius / 3)}px Quicksand`;
+        ctx.fillStyle = isPlayer ? '#fff' : '#fff';
+        ctx.font = `${Math.max(12, this.radius / 3)}px Quicksand, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(this.name, this.position.x, this.position.y);
@@ -1027,6 +1027,89 @@ const DivideIoGame: React.FC<{
             visibleBots: visibleBots,
         });
 
+        // --- RENDER PASS ---
+        // Clear canvas and draw world with camera transform
+        try {
+          // handle device pixel ratio for crisper rendering
+          const dpr = Math.max(1, window.devicePixelRatio || 1);
+          if (canvas.width !== Math.floor(window.innerWidth * dpr) || canvas.height !== Math.floor(window.innerHeight * dpr)) {
+            canvas.width = Math.floor(window.innerWidth * dpr);
+            canvas.height = Math.floor(window.innerHeight * dpr);
+            canvas.style.width = `${window.innerWidth}px`;
+            canvas.style.height = `${window.innerHeight}px`;
+          }
+
+          // clear entire canvas
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          // Set camera transform: scale = camera.zoom * devicePixelRatio adjustment
+          const scale = (camera.zoom || 1) * dpr;
+          const tx = canvas.width / 2 - camera.x * scale;
+          const ty = canvas.height / 2 - camera.y * scale;
+          ctx.setTransform(scale, 0, 0, scale, tx, ty);
+
+          // draw background (world image) fitting the world coordinates
+          if (bgImgRef.current) {
+            try {
+              ctx.drawImage(
+                bgImgRef.current,
+                WORLD_CENTER_X - WORLD_SIZE / 2,
+                WORLD_CENTER_Y - WORLD_SIZE / 2,
+                WORLD_SIZE,
+                WORLD_SIZE
+              );
+            } catch (e) {
+              // fallback fill if drawing image fails
+              ctx.fillStyle = '#f3fff7';
+              ctx.fillRect(WORLD_CENTER_X - WORLD_SIZE / 2, WORLD_CENTER_Y - WORLD_SIZE / 2, WORLD_SIZE, WORLD_SIZE);
+            }
+          } else {
+            // fallback background
+            ctx.fillStyle = '#f3fff7';
+            ctx.fillRect(WORLD_CENTER_X - WORLD_SIZE / 2, WORLD_CENTER_Y - WORLD_SIZE / 2, WORLD_SIZE, WORLD_SIZE);
+          }
+
+          // draw pellets
+          for (let i = 0; i < pellets.length; i++) {
+            pellets[i].draw(ctx);
+          }
+
+          // draw bots (under player)
+          for (let i = 0; i < botCells.length; i++) {
+            botCells[i].draw(ctx, false);
+          }
+
+          // draw player cells on top
+          for (let i = 0; i < playerCells.length; i++) {
+            playerCells[i].draw(ctx, true);
+          }
+
+          // draw world border for reference
+          ctx.beginPath();
+          ctx.arc(WORLD_CENTER_X, WORLD_CENTER_Y, WORLD_RADIUS, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+          ctx.lineWidth = 6;
+          ctx.stroke();
+          ctx.closePath();
+
+          // restore to HUD coordinate space (reset transform)
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+          // draw HUD (score) in top-left corner (pixel-scaled)
+          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          ctx.font = `${16 * dpr}px Quicksand, sans-serif`;
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          const scoreText = `Score: ${gameInstance.score.toLocaleString()}`;
+          const maxText = `Max: ${gameInstance.maxScore.toLocaleString()}`;
+          ctx.fillText(scoreText, 10 * dpr, 10 * dpr);
+          ctx.fillText(maxText, 10 * dpr, 10 * dpr + 20 * dpr);
+
+        } catch (renderErr) {
+          console.error('Render error:', renderErr);
+        }
+
     } catch (error) {
         console.error('Error in game loop:', error);
     }
@@ -1038,8 +1121,12 @@ const DivideIoGame: React.FC<{
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    // initial canvas sizing (we handle dpr in render pass too)
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = `${window.innerWidth}px`;
+    canvas.style.height = `${window.innerHeight}px`;
     
     const zoomX = canvas.width / WORLD_SIZE;
     const zoomY = canvas.height / WORLD_SIZE;
