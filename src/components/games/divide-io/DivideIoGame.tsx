@@ -13,7 +13,7 @@ import PauseMenu from './PauseMenu';
 import { Button } from '@/components/ui/button';
 import { Pause } from 'lucide-react';
 import { saveGameState, loadGameState, clearGameState } from '@/utils/divide-io-storage'; // Importando utilitários
-import CongratsModal from './CongratsModal.tsx'; // explicit .tsx to satisfy some TS resolver configs
+import CongratsModal from './CongratsModal'; // fixed import (no extension)
 
 type Difficulty = 'very-easy' | 'easy' | 'medium' | 'hard';
 
