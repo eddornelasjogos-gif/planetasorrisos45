@@ -13,6 +13,7 @@ import PauseMenu from './PauseMenu';
 import { Button } from '@/components/ui/button';
 import { Pause } from 'lucide-react';
 import { saveGameState, loadGameState, clearGameState } from '@/utils/divide-io-storage'; // Importando utilitários
+import CongratsModal from './CongratsModal';
 
 type Difficulty = 'very-easy' | 'easy' | 'medium' | 'hard';
 
@@ -456,6 +457,11 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
   const keyboardDirectionRef = useRef({ x: 0, y: 0 });
   const isKeyboardActiveRef = useRef(false);
 
+  // NEW: state/ref to manage congrats modal and ensure it fires once
+  const [showCongrats, setShowCongrats] = React.useState(false);
+  const hasWonRef = useRef(false);
+  const CONGRATS_SCORE = 250000;
+
   // --- Handlers de Pausa/Reinício ---
   
   const handlePause = useCallback(() => {
@@ -484,6 +490,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
     // 1. Limpa o estado salvo
     clearGameState();
     // 2. Sinaliza para Games.tsx que deve forçar um reset completo (usando -1)
+    setShowCongrats(false);
     onGameOver(-1); 
   }, [onGameOver]);
   
@@ -491,6 +498,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
     console.log("Game Exited - Clearing state and returning to menu.");
     // 1. Limpa o estado salvo
     clearGameState();
+    setShowCongrats(false);
     // 2. Volta para a tela de seleção de jogos (Games.tsx)
     onGameOver(gameInstance.maxScore);
   }, [onGameOver, gameInstance.maxScore]);
@@ -778,7 +786,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
                     const attractionFactor = Math.max(0, mergeProgress); 
                     
                     const attractionForce = 0.5 * (avgRadius / cell.radius) * attractionFactor; 
-                    cell.velocity = cell.velocity.add(attractionVector.multiply(attractionForce));
+                    cell.velocity = cell.velocity.add(attractionForce ? attractionVector.multiply(attractionForce) : new Vector(0,0));
                 }
                 
                 if (totalMass > MIN_SPLIT_MASS * 2 && cells.length === 1 && Math.random() < settings.botSplitChance) {
@@ -951,6 +959,14 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
         gameInstance.score = currentScore;
         if (currentScore > gameInstance.maxScore) {
             gameInstance.maxScore = currentScore;
+        }
+
+        // NEW: Trigger congrats once when reaching threshold
+        if (!hasWonRef.current && gameInstance.score >= CONGRATS_SCORE) {
+          hasWonRef.current = true;
+          setIsPaused(true); // pause the game
+          setShowCongrats(true); // show modal
+          console.log("Player reached congrats threshold:", gameInstance.score);
         }
 
         let centerX = WORLD_CENTER_X;
@@ -1297,6 +1313,16 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
           onExit={handleExit}
         />
       )}
+
+      {/* Congrats modal shown when threshold reached */}
+      <CongratsModal
+        isOpen={showCongrats}
+        playerName={playerName}
+        score={gameInstance.score}
+        onRestart={handleRestart}
+        onExit={handleExit}
+        onClose={() => setShowCongrats(false)}
+      />
     </div>
   );
 };
