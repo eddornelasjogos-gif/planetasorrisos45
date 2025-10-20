@@ -1075,14 +1075,12 @@ const DivideIoGame: React.FC<{
             pellets[i].draw(ctx);
           }
 
-          // draw bots (under player)
-          for (let i = 0; i < botCells.length; i++) {
-            botCells[i].draw(ctx, false);
-          }
-
-          // draw player cells on top
-          for (let i = 0; i < playerCells.length; i++) {
-            playerCells[i].draw(ctx, true);
+          // DRAW CELLS: sort by mass so smaller drawn first and larger drawn last (on top)
+          const drawableCells = [...allCells].sort((a, b) => a.mass - b.mass);
+          for (let i = 0; i < drawableCells.length; i++) {
+            const cell = drawableCells[i];
+            const isPlayer = cell instanceof Player || !cell.isBot;
+            cell.draw(ctx, isPlayer);
           }
 
           // draw world border for reference (darker stroke)
@@ -1141,7 +1139,7 @@ const DivideIoGame: React.FC<{
             }));
             ownerArray.sort((a, b) => b.mass - a.mass);
 
-            const topList = ownerArray.slice(0, 5);
+            const topList = ownerArray.filter(o => o.mass > 0).slice(0, 5);
 
             // panel geometry
             const panelWidth = 220 * dpr;
