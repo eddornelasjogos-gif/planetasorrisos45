@@ -13,15 +13,9 @@ import PauseMenu from './PauseMenu';
 import { Button } from '@/components/ui/button';
 import { Pause } from 'lucide-react';
 import { saveGameState, loadGameState, clearGameState } from '@/utils/divide-io-storage'; // Importando utilitários
-import CongratsModal from './CongratsModal';
+import CongratsModal from './CongratsModal.tsx'; // explicit .tsx to satisfy some TS resolver configs
 
 type Difficulty = 'very-easy' | 'easy' | 'medium' | 'hard';
-
-interface DivideIoGameProps {
-  difficulty: Difficulty;
-  onGameOver: (score: number) => void;
-  playerName: string;
-}
 
 const difficultySettings = {
   'very-easy': { botCount: 18, botAggression: 0.1, botSplitChance: 0.0005 },
@@ -273,7 +267,6 @@ const botLogic = {
     decisionTimer: new Map<string, number>(),
     
     findBestTarget(botCells: Cell[], pellets: Pellet[], otherCells: Cell[], aggression: number, botName: string) {
-        // CORRIGIDO: Usar botCells
         const totalMass = botCells.reduce((sum, c) => sum + c.mass, 0);
         const avgRadius = botCells.reduce((sum, c) => sum + c.radius, 0) / botCells.length; 
         const center = botCells.reduce((sum, c) => sum.add(c.position.multiply(c.mass)), new Vector(0, 0)).multiply(1 / totalMass);
@@ -422,7 +415,11 @@ const generateBotNames = (count: number) => {
     return uniqueBotNames.slice(0, count);
 };
 
-const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, playerName }) => {
+const DivideIoGame: React.FC<{
+  difficulty: Difficulty;
+  onGameOver: (score: number) => void;
+  playerName: string;
+}> = ({ difficulty, onGameOver, playerName }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { highScore } = useDivideIoProgress();
   const animationFrameId = useRef<number>();
@@ -465,8 +462,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
   // --- Handlers de Pausa/Reinício ---
   
   const handlePause = useCallback(() => {
-    console.log("Game Paused - Saving state...");
-    // 1. Salva o estado atual
+    // Save state and pause
     saveGameState(
         gameInstance.playerCells,
         gameInstance.botCells,
@@ -475,36 +471,27 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
         gameInstance.score,
         gameInstance.maxScore
     );
-    // 2. Pausa
     setIsPaused(true);
   }, [gameInstance]);
   
   const handleResume = useCallback(() => {
-    console.log("Game Resumed - Continuing from saved state.");
-    // 1. Apenas despausa. O estado salvo será usado se o jogo for reiniciado, mas aqui apenas continuamos o loop.
     setIsPaused(false);
   }, []);
   
   const handleRestart = useCallback(() => {
-    console.log("Game Restarted - Clearing state and forcing remount.");
-    // 1. Limpa o estado salvo
     clearGameState();
-    // 2. Sinaliza para Games.tsx que deve forçar um reset completo (usando -1)
     setShowCongrats(false);
     onGameOver(-1); 
   }, [onGameOver]);
   
   const handleExit = useCallback(() => {
-    console.log("Game Exited - Clearing state and returning to menu.");
-    // 1. Limpa o estado salvo
     clearGameState();
     setShowCongrats(false);
-    // 2. Volta para a tela de seleção de jogos (Games.tsx)
     onGameOver(gameInstance.maxScore);
   }, [onGameOver, gameInstance.maxScore]);
 
 
-  // --- Handlers de Movimento e Split (mantidos) ---
+  // --- Movement & split handlers ---
   
   const handleJoystickMove = useCallback((direction: { x: number; y: number }) => {
     if (isPaused) return;
@@ -553,7 +540,6 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
     gameInstance.playerCells.push(...newCells);
   }, [gameInstance, playSplit, isPaused]);
 
-  // Efeito para escutar a tecla Espaço (PC) e o movimento do mouse/teclado
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -562,7 +548,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
       if (event.key === 'Escape') {
         setIsPaused(p => {
             if (!p) {
-                handlePause(); // Salva estado ao pausar via ESC
+                handlePause();
             }
             return !p;
         });
@@ -923,8 +909,6 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
                     botNamesRef.current.push(cell.name);
                 }
             });
-            
-            console.log(`Performance optimization: Removed ${cellsToRemove.length} small bot cells to maintain performance.`);
         }
         
         // --- 7. Respawn de Bots ---
@@ -966,7 +950,6 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
           hasWonRef.current = true;
           setIsPaused(true); // pause the game
           setShowCongrats(true); // show modal
-          console.log("Player reached congrats threshold:", gameInstance.score);
         }
 
         let centerX = WORLD_CENTER_X;
@@ -1043,135 +1026,9 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
             playerRadius: avgRadius, 
             visibleBots: visibleBots,
         });
-        
-        // --- 10. Leaderboard Logic ---
-        
-        const botMassMap = new Map<string, number>();
-        botCells.forEach(bot => {
-            botMassMap.set(bot.name, (botMassMap.get(bot.name) || 0) + bot.mass);
-        });
-        
-        const botEntries = Array.from(botMassMap.entries()).map(([name, mass]) => ({
-            name: name,
-            mass: mass,
-            isPlayer: false,
-            id: 0, 
-        }));
-        
-        const playerEntry = {
-            name: playerName,
-            mass: totalPlayerMass,
-            isPlayer: true,
-            id: 0, 
-        };
-        
-        const leaderboardData = [...botEntries, playerEntry]
-            .sort((a, b) => b.mass - a.mass)
-            .slice(0, 5); 
-
-
-        // Drawing
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.scale(camera.zoom, camera.zoom);
-        ctx.translate(-camera.x, -camera.y);
-        
-        if (bgImgRef.current) {
-            const img = bgImgRef.current;
-            const opacity = 0.4;
-            
-            ctx.globalAlpha = opacity;
-            ctx.drawImage(img, 0, 0, WORLD_SIZE, WORLD_SIZE);
-            ctx.globalAlpha = 1.0;
-        } else {
-            ctx.fillStyle = '#f0f0f0';
-            ctx.fillRect(0, 0, WORLD_SIZE, WORLD_SIZE);
-        }
-
-        ctx.strokeStyle = '#eee';
-        ctx.lineWidth = 1;
-        for (let r = 50; r <= WORLD_RADIUS; r += 50) {
-            ctx.beginPath();
-            ctx.arc(WORLD_CENTER_X, WORLD_CENTER_Y, r, 0, Math.PI * 2);
-            ctx.stroke();
-        }
-        for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 8) {
-            ctx.beginPath();
-            ctx.moveTo(WORLD_CENTER_X, WORLD_CENTER_Y);
-            ctx.lineTo(
-                WORLD_CENTER_X + Math.cos(angle) * WORLD_RADIUS,
-                WORLD_CENTER_Y + Math.sin(angle) * WORLD_RADIUS
-            );
-            ctx.stroke();
-        }
-
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 20; 
-        ctx.beginPath();
-        ctx.arc(WORLD_CENTER_X, WORLD_CENTER_Y, WORLD_RADIUS, 0, Math.PI * 2);
-        ctx.stroke();
-
-        pellets.forEach(p => {
-            if (p.position.x >= viewLeft && p.position.x <= viewRight &&
-                p.position.y >= viewTop && p.position.y <= viewBottom) {
-                p.draw(ctx);
-            }
-        });
-        
-        const cellsOutsideVirus: Cell[] = [];
-        
-        allCells.forEach(cell => {
-            cellsOutsideVirus.push(cell);
-        });
-        
-        cellsOutsideVirus.sort((a, b) => a.mass - b.mass).forEach(c => {
-            c.draw(ctx, c instanceof Player);
-        });
-        
-        ctx.restore();
-
-        // Draw UI elements (Score and Leaderboard)
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 20px Quicksand';
-        ctx.textAlign = 'left';
-        ctx.fillText(`Pontuação: ${gameInstance.score}`, 20, 30);
-        
-        ctx.textAlign = 'right';
-        ctx.fillText(`Recorde: ${highScore}`, canvas.width - 20, 30);
-        
-        const leaderboardWidth = 180; 
-        const leaderboardX = canvas.width - leaderboardWidth - 20;
-        const lineHeight = 20; 
-        const leaderboardY = 50; 
-        const leaderboardHeight = 20 + leaderboardData.length * lineHeight;
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fillRect(leaderboardX, leaderboardY, leaderboardWidth, leaderboardHeight);
-        ctx.strokeStyle = '#ccc';
-        ctx.strokeRect(leaderboardX, leaderboardY, leaderboardWidth, leaderboardHeight);
-
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 16px Quicksand';
-        ctx.textAlign = 'left';
-        ctx.fillText('Top 5', leaderboardX + 10, leaderboardY + 20);
-        
-        ctx.font = '14px Quicksand';
-        leaderboardData.forEach((entry, index) => {
-            const y = leaderboardY + 40 + index * lineHeight; 
-            ctx.fillStyle = entry.isPlayer ? '#2196F3' : '#333';
-            
-            const nameDisplay = entry.name.length > 10 ? entry.name.substring(0, 8) + '...' : entry.name;
-            ctx.textAlign = 'left';
-            ctx.fillText(`${index + 1}. ${nameDisplay}`, leaderboardX + 10, y);
-            
-            ctx.textAlign = 'right';
-            ctx.fillText(Math.floor(entry.mass).toString(), leaderboardX + leaderboardWidth - 10, y);
-        });
 
     } catch (error) {
         console.error('Error in game loop:', error);
-        // Continue the game loop despite the error
     }
 
     animationFrameId.current = requestAnimationFrame(gameLoop);
@@ -1210,9 +1067,8 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
         console.log("Loading saved game state...");
         
         gameInstance.playerCells = savedState.playerCells.map(c => {
-            // Ao carregar, precisamos recriar as instâncias de Player/Cell
             const player = new Player(c.x, c.y, c.color, c.mass, c.name);
-            player.id = getNextCellId(); // Garante ID único
+            player.id = getNextCellId();
             return player;
         });
         
@@ -1227,12 +1083,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
         gameInstance.score = savedState.score;
         gameInstance.maxScore = savedState.maxScore;
         
-        // Não limpamos o estado aqui, pois o jogo pode ter sido pausado e o usuário pode querer reiniciar.
-        // O estado é limpo apenas ao morrer, reiniciar ou sair.
-        
     } else {
-        console.log("Starting new game state...");
-        
         const initialPlayerMass = MIN_CELL_RADIUS * MIN_CELL_RADIUS / 2; 
         gameInstance.playerCells = [new Player(WORLD_CENTER_X, WORLD_CENTER_Y, '#2196F3', initialPlayerMass, playerName)];
         gameInstance.viruses = [];
@@ -1284,7 +1135,6 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden', touchAction: isMobile ? 'none' : 'auto' }}>
       <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
       
-      {/* Botão de Pausa (z-index aumentado para garantir clique) */}
       <Button 
         variant="secondary" 
         size="icon" 
@@ -1295,9 +1145,7 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
         <Pause className="w-5 h-5" />
       </Button>
 
-      {/* Controles visíveis apenas em dispositivos móveis E QUANDO NÃO ESTIVER PAUSADO */}
       {isMobile && !isPaused && (
-        // Wrapper para garantir que o joystick não bloqueie o botão de pausa (z-index 100)
         <div className="fixed inset-0 z-50"> 
           <VirtualJoystick onMove={handleJoystickMove} />
           <SplitButton onSplit={handleSplit} />
@@ -1314,7 +1162,6 @@ const DivideIoGame: React.FC<DivideIoGameProps> = ({ difficulty, onGameOver, pla
         />
       )}
 
-      {/* Congrats modal shown when threshold reached */}
       <CongratsModal
         isOpen={showCongrats}
         playerName={playerName}
