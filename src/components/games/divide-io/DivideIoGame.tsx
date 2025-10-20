@@ -1096,41 +1096,7 @@ const DivideIoGame: React.FC<{
           // restore to HUD coordinate space (reset transform)
           ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-          // --- VIGNETTE: darken outside circle area to emphasize world limits ---
-          try {
-            const screenScale = scale;
-            const worldScreenX = canvas.width / 2; // camera centers world center to canvas center
-            const worldScreenY = canvas.height / 2;
-            const worldScreenR = WORLD_RADIUS * screenScale;
-
-            // draw semi-transparent overlay covering whole canvas
-            ctx.fillStyle = 'rgba(0,0,0,0.45)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            // punch a hole where the world is (destination-out)
-            ctx.globalCompositeOperation = 'destination-out';
-            ctx.beginPath();
-            ctx.arc(worldScreenX, worldScreenY, worldScreenR, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.closePath();
-
-            // restore to normal compositing and draw subtle inner glow (optional)
-            ctx.globalCompositeOperation = 'source-over';
-            ctx.beginPath();
-            ctx.arc(worldScreenX, worldScreenY, worldScreenR - 6 * dpr, 0, Math.PI * 2);
-            const grad = ctx.createRadialGradient(worldScreenX, worldScreenY, worldScreenR - 60 * dpr, worldScreenX, worldScreenY, worldScreenR);
-            grad.addColorStop(0, 'rgba(0,0,0,0.0)');
-            grad.addColorStop(1, 'rgba(0,0,0,0.4)');
-            ctx.fillStyle = grad;
-            ctx.fill();
-            ctx.closePath();
-          } catch (vErr) {
-            // swallow vignette errors
-            console.error('Vignette error', vErr);
-          }
-
           // draw HUD (score) in top-left corner (pixel-scaled)
-          const dpr = Math.max(1, window.devicePixelRatio || 1);
           ctx.fillStyle = 'rgba(255,255,255,0.95)';
           ctx.strokeStyle = 'rgba(0,0,0,0.5)';
           ctx.lineWidth = 2;
