@@ -1115,38 +1115,85 @@ const DivideIoGame: React.FC<{
           ctx.fillText(scoreText, 16 * dpr, 14 * dpr);
           ctx.fillText(maxText, 16 * dpr, 14 * dpr + 18 * dpr);
 
-          // --- TOP5 PANEL (top-right) ---
+          // --- TOP5 PANEL (top-right) based on current match participants ---
           try {
+            // Build owner -> aggregate mass and pick representative color (largest cell color)
+            const owners = new Map<string, { mass: number; largestMass: number; color: string }>();
+            allCells.forEach((c) => {
+              const existing = owners.get(c.name);
+              if (!existing) {
+                owners.set(c.name, { mass: c.mass, largestMass: c.mass, color: c.color });
+              } else {
+                existing.mass += c.mass;
+                if (c.mass > existing.largestMass) {
+                  existing.largestMass = c.mass;
+                  existing.color = c.color;
+                }
+                owners.set(c.name, existing);
+              }
+            });
+
+            // Convert to array and sort by mass descending
+            const ownerArray = Array.from(owners.entries()).map(([name, data]) => ({
+              name,
+              mass: Math.floor(data.mass),
+              color: data.color,
+            }));
+            ownerArray.sort((a, b) => b.mass - a.mass);
+
+            const topList = ownerArray.slice(0, 5);
+
+            // panel geometry
             const panelWidth = 220 * dpr;
             const panelX = canvas.width - panelWidth - 12 * dpr;
             const panelY = 12 * dpr;
-            const rowH = 22 * dpr;
+            const rowH = 26 * dpr;
             const headerH = 30 * dpr;
             const rowsToShow = 5;
-            // background
-            ctx.fillStyle = 'rgba(0,0,0,0.55)';
-            roundRect(ctx, panelX, panelY, panelWidth, headerH + rowH * rowsToShow + 12 * dpr, 10 * dpr, true, true);
+            const panelH = headerH + rowH * rowsToShow + 12 * dpr;
+
+            // semi-transparent background so map remains visible
+            ctx.fillStyle = 'rgba(255,255,255,0.12)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+            roundRect(ctx, panelX, panelY, panelWidth, panelH, 10 * dpr, true, true);
+
             // header
-            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.fillStyle = 'rgba(255,255,255,0.92)';
             ctx.font = `${14 * dpr}px Quicksand, sans-serif`;
             ctx.textAlign = 'left';
-            ctx.fillText('Top 5', panelX + 12 * dpr, panelY + 8 * dpr);
+            ctx.fillText('Top 5 (live)', panelX + 12 * dpr, panelY + 8 * dpr);
+
             ctx.font = `${12 * dpr}px Quicksand, sans-serif`;
-            // entries
-            const topList = Array.isArray(leaderboard) ? leaderboard.slice(0, rowsToShow) : [];
+
             for (let i = 0; i < rowsToShow; i++) {
+              const y = panelY + headerH + i * rowH + 6 * dpr;
               const entry = topList[i];
-              const y = panelY + headerH + i * rowH + 4 * dpr;
+
               if (entry) {
-                // rank
-                ctx.fillStyle = 'rgba(255,255,255,0.9)';
-                ctx.fillText(`${i + 1}. ${entry.name}`, panelX + 12 * dpr, y);
-                // score (right aligned)
+                // small color dot
+                const dotX = panelX + 12 * dpr;
+                const dotY = y + 8 * dpr;
+                ctx.beginPath();
+                ctx.arc(dotX, dotY, 6 * dpr, 0, Math.PI * 2);
+                ctx.fillStyle = entry.color;
+                ctx.fill();
+                ctx.closePath();
+
+                // name (colored)
+                ctx.fillStyle = entry.color;
+                ctx.textAlign = 'left';
+                ctx.fillText(`${i + 1}. ${entry.name}`, dotX + 12 * dpr, y);
+
+                // score (same color) right-aligned
                 ctx.textAlign = 'right';
-                ctx.fillText(`${entry.score}`, panelX + panelWidth - 12 * dpr, y);
+                ctx.fillText(`${entry.mass.toLocaleString()}`, panelX + panelWidth - 12 * dpr, y);
+
+                // reset alignment
                 ctx.textAlign = 'left';
               } else {
-                ctx.fillStyle = 'rgba(255,255,255,0.45)';
+                // placeholder for empty slot
+                ctx.fillStyle = 'rgba(255,255,255,0.35)';
+                ctx.textAlign = 'left';
                 ctx.fillText(`${i + 1}. ---`, panelX + 12 * dpr, y);
                 ctx.textAlign = 'right';
                 ctx.fillText(`0`, panelX + panelWidth - 12 * dpr, y);
