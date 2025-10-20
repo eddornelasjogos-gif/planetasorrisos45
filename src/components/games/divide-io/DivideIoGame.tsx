@@ -122,7 +122,7 @@ export class Cell {
     ctx.arc(this.position.x, this.position.y, this.radius, 0, Math.PI * 2);
     ctx.fillStyle = this.color;
     ctx.fill();
-    ctx.strokeStyle = '#00000066';
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.lineWidth = Math.max(1, this.radius * 0.04);
     ctx.stroke();
     ctx.closePath();
@@ -421,7 +421,7 @@ const DivideIoGame: React.FC<{
   playerName: string;
 }> = ({ difficulty, onGameOver, playerName }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { highScore } = useDivideIoProgress();
+  const { highScore, leaderboard } = useDivideIoProgress();
   const animationFrameId = useRef<number>();
   const isMobile = useIsMobile();
   
@@ -1085,26 +1085,111 @@ const DivideIoGame: React.FC<{
             playerCells[i].draw(ctx, true);
           }
 
-          // draw world border for reference
+          // draw world border for reference (darker stroke)
           ctx.beginPath();
           ctx.arc(WORLD_CENTER_X, WORLD_CENTER_Y, WORLD_RADIUS, 0, Math.PI * 2);
-          ctx.strokeStyle = 'rgba(0,0,0,0.08)';
-          ctx.lineWidth = 6;
+          ctx.strokeStyle = 'rgba(0,0,0,0.6)'; // darker border
+          ctx.lineWidth = 12;
           ctx.stroke();
           ctx.closePath();
 
           // restore to HUD coordinate space (reset transform)
           ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+          // --- VIGNETTE: darken outside circle area to emphasize world limits ---
+          try {
+            const screenScale = scale;
+            const worldScreenX = canvas.width / 2; // camera centers world center to canvas center
+            const worldScreenY = canvas.height / 2;
+            const worldScreenR = WORLD_RADIUS * screenScale;
+
+            // draw semi-transparent overlay covering whole canvas
+            ctx.fillStyle = 'rgba(0,0,0,0.45)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // punch a hole where the world is (destination-out)
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.beginPath();
+            ctx.arc(worldScreenX, worldScreenY, worldScreenR, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.closePath();
+
+            // restore to normal compositing and draw subtle inner glow (optional)
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.beginPath();
+            ctx.arc(worldScreenX, worldScreenY, worldScreenR - 6 * dpr, 0, Math.PI * 2);
+            const grad = ctx.createRadialGradient(worldScreenX, worldScreenY, worldScreenR - 60 * dpr, worldScreenX, worldScreenY, worldScreenR);
+            grad.addColorStop(0, 'rgba(0,0,0,0.0)');
+            grad.addColorStop(1, 'rgba(0,0,0,0.4)');
+            ctx.fillStyle = grad;
+            ctx.fill();
+            ctx.closePath();
+          } catch (vErr) {
+            // swallow vignette errors
+            console.error('Vignette error', vErr);
+          }
+
           // draw HUD (score) in top-left corner (pixel-scaled)
-          ctx.fillStyle = 'rgba(0,0,0,0.7)';
+          const dpr = Math.max(1, window.devicePixelRatio || 1);
+          ctx.fillStyle = 'rgba(255,255,255,0.95)';
+          ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+          ctx.lineWidth = 2;
           ctx.font = `${16 * dpr}px Quicksand, sans-serif`;
           ctx.textAlign = 'left';
           ctx.textBaseline = 'top';
           const scoreText = `Score: ${gameInstance.score.toLocaleString()}`;
           const maxText = `Max: ${gameInstance.maxScore.toLocaleString()}`;
-          ctx.fillText(scoreText, 10 * dpr, 10 * dpr);
-          ctx.fillText(maxText, 10 * dpr, 10 * dpr + 20 * dpr);
+          // small panel background
+          const padding = 8 * dpr;
+          const panelW = 160 * dpr;
+          const panelH = 44 * dpr;
+          ctx.fillStyle = 'rgba(255,255,255,0.85)';
+          roundRect(ctx, 10 * dpr, 10 * dpr, panelW, panelH, 8 * dpr, true, true);
+          ctx.fillStyle = 'rgba(0,0,0,0.85)';
+          ctx.fillText(scoreText, 16 * dpr, 14 * dpr);
+          ctx.fillText(maxText, 16 * dpr, 14 * dpr + 18 * dpr);
+
+          // --- TOP5 PANEL (top-right) ---
+          try {
+            const panelWidth = 220 * dpr;
+            const panelX = canvas.width - panelWidth - 12 * dpr;
+            const panelY = 12 * dpr;
+            const rowH = 22 * dpr;
+            const headerH = 30 * dpr;
+            const rowsToShow = 5;
+            // background
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            roundRect(ctx, panelX, panelY, panelWidth, headerH + rowH * rowsToShow + 12 * dpr, 10 * dpr, true, true);
+            // header
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            ctx.font = `${14 * dpr}px Quicksand, sans-serif`;
+            ctx.textAlign = 'left';
+            ctx.fillText('Top 5', panelX + 12 * dpr, panelY + 8 * dpr);
+            ctx.font = `${12 * dpr}px Quicksand, sans-serif`;
+            // entries
+            const topList = Array.isArray(leaderboard) ? leaderboard.slice(0, rowsToShow) : [];
+            for (let i = 0; i < rowsToShow; i++) {
+              const entry = topList[i];
+              const y = panelY + headerH + i * rowH + 4 * dpr;
+              if (entry) {
+                // rank
+                ctx.fillStyle = 'rgba(255,255,255,0.9)';
+                ctx.fillText(`${i + 1}. ${entry.name}`, panelX + 12 * dpr, y);
+                // score (right aligned)
+                ctx.textAlign = 'right';
+                ctx.fillText(`${entry.score}`, panelX + panelWidth - 12 * dpr, y);
+                ctx.textAlign = 'left';
+              } else {
+                ctx.fillStyle = 'rgba(255,255,255,0.45)';
+                ctx.fillText(`${i + 1}. ---`, panelX + 12 * dpr, y);
+                ctx.textAlign = 'right';
+                ctx.fillText(`0`, panelX + panelWidth - 12 * dpr, y);
+                ctx.textAlign = 'left';
+              }
+            }
+          } catch (topErr) {
+            console.error('Top5 draw error', topErr);
+          }
 
         } catch (renderErr) {
           console.error('Render error:', renderErr);
@@ -1115,7 +1200,7 @@ const DivideIoGame: React.FC<{
     }
 
     animationFrameId.current = requestAnimationFrame(gameLoop);
-  }, [difficulty, onGameOver, highScore, gameInstance, playerName, playCollect, playSplit, initialBotCount, isMobile, isPaused]);
+  }, [difficulty, onGameOver, highScore, leaderboard, gameInstance, playerName, playCollect, playSplit, initialBotCount, isMobile, isPaused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1262,3 +1347,19 @@ const DivideIoGame: React.FC<{
 };
 
 export default DivideIoGame;
+
+/**
+ * helper: draw rounded rectangle
+ */
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number, fill: boolean, stroke: boolean) {
+  if (r < 0) r = 0;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  if (fill) ctx.fill();
+  if (stroke) ctx.stroke();
+}
